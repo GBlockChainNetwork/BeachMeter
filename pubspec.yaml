@@ -1,0 +1,23 @@
+name: beachmeter
+description: Aplicație UV pentru plajă
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  geolocator: ^12.0.0
+  http: ^1.2.0
+  flutter_local_notifications: ^17.0.0
+  workmanager: ^1.0.0
+  google_maps_flutter: ^2.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
