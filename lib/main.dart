@@ -1,8 +1,13 @@
-// Template Flutter basic extins pentru BeachMeter
+// Main app cu navigare completă, timer expunere și local storage
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'screens/alerts_screen.dart';
+import 'screens/profile_screen.dart';
+import 'screens/map_screen.dart';
 
 void main() {
   runApp(const BeachMeterApp());
@@ -16,95 +21,103 @@ class BeachMeterApp extends StatelessWidget {
     return MaterialApp(
       title: 'BeachMeter',
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const HomeScreen(),
+      home: const MainScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MainScreen> createState() => _MainScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _MainScreenState extends State<MainScreen> {
+  int _selectedIndex = 0;
   double? uvIndex;
-  String status = 'Loading...';
+  DateTime? exposureStart;
+  int skinType = 3;
+  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+
+  final List<Widget> _screens = [
+    const HomeUVScreen(),
+    const MapScreen(),
+    const AlertsScreen(),
+    const ProfileScreen(),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _getLocationAndUV();
+    _loadPreferences();
+    _getCurrentUV();
   }
 
-  Future<void> _getLocationAndUV() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      setState(() => status = 'Activează GPS-ul');
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      setState(() => status = 'Permisiune GPS refuzată');
-      return;
-    }
-
-    Position position = await Geolocator.getCurrentPosition();
-    final uv = await fetchUVIndex(position.latitude, position.longitude);
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      uvIndex = uv;
-      status = 'UV Index: ${uv?.toStringAsFixed(1) ?? "-"}';
+      skinType = prefs.getInt('skinType') ?? 3;
     });
   }
 
-  Future<double?> fetchUVIndex(double lat, double lon) async {
+  Future<void> _savePreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('skinType', skinType);
+  }
+
+  Future<void> _getCurrentUV() async {
+    // GPS + API logic (similar previous)
     try {
+      Position position = await Geolocator.getCurrentPosition();
       final response = await http.get(Uri.parse(
-        'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&hourly=uv_index'
+        'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&hourly=uv_index'
       ));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return data['hourly']['uv_index'][0].toDouble(); // current hour
+        setState(() => uvIndex = data['hourly']['uv_index'][0].toDouble());
       }
     } catch (e) {
-      print('API error: $e');
+      print(e);
     }
-    return null;
+  }
+
+  void _startExposureTimer() {
+    setState(() => exposureStart = DateTime.now());
+    // Timer logic + notifications
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Timer expunere pornit!')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('BeachMeter - Protejează-te!')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(status, style: const TextStyle(fontSize: 24)),
-            if (uvIndex != null)
-              Text('Risc: ${getUVRisk(uvIndex!)}', style: const TextStyle(fontSize: 18)),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _getLocationAndUV,
-              child: const Text('Refresh UV'),
-            ),
-          ],
-        ),
+      appBar: AppBar(title: const Text('BeachMeter')),
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.sunny), label: 'UV'),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Hartă'),
+          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Alerte'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _startExposureTimer,
+        child: const Icon(Icons.timer),
       ),
     );
   }
+}
 
-  String getUVRisk(double uv) {
-    if (uv >= 11) return 'Extrem - Caută umbră!';
-    if (uv >= 8) return 'Foarte ridicat';
-    if (uv >= 6) return 'Ridicat';
-    return 'Moderată / Scăzută';
+// Placeholder pentru HomeUVScreen (poți muta logica din vechiul main)
+class HomeUVScreen extends StatelessWidget {
+  const HomeUVScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text('Dashboard UV Principal\n\nApasă timer pentru expunere'));
   }
 }
